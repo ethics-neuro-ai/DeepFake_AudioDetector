@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Audio Authenticity & Comparison Checker</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f7f9fc;
+      height: 100vh;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.1);
+      display: flex;
+      gap: 40px;
+      max-width: 16000px;
+      width: 95%;
+      height: 100%;
+    }
+
+
+    h2 {
+      margin-bottom: 28px;
+      color: #222;
+      font-size: 1.6rem; 
+    }
+
+    .mode-switcher {
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 14px;
+      font-weight: 600;
+      font-size: 1.1rem;
+      user-select: none;
+    }
+
+    label.switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+
+    label.switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc;
+      border-radius: 24px;
+      transition: 0.4s;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      border-radius: 50%;
+      transition: 0.4s;
+    }
+
+    input:checked + .slider {
+      background-color: #3f51b5;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
+
+    select, input[type="file"], button {
+      width: 100%;
+      padding: 12px 14px;
+      margin: 10px 0 20px 0;
+      border-radius: 8px;
+      border: 1.8px solid #ddd;
+      font-size: 1rem;
+      transition: border-color 0.3s ease;
+      box-sizing: border-box;
+    }
+
+    select:focus, input[type="file"]:focus, button:focus {
+      outline: none;
+      border-color: #3f51b5;
+      box-shadow: 0 0 5px rgba(63,81,181,0.5);
+    }
+
+    button {
+      background-color: #3f51b5;
+      color: white;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      user-select: none;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: #303f9f;
+    }
+
+    button:disabled {
+      background-color: #a3a8d1;
+      cursor: not-allowed;
+    }
+
+    .result {
+      margin-top: 20px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      min-height: 24px;
+    }
+
+    .real {
+      color: #2e7d32;
+    }
+
+    .fake {
+      color: #c62828;
+    }
+
+    #spectrogram {
+            width: 70%;
+            max-width: 800px;
+            display: block;
+            margin: 20px auto;
+            height: 20%;
+        }
+    #audio-player {
+            width: 100%;
+            margin: 20px auto;
+            display: block;
+        }
+        
+
+    
+  </style>
+</head>
+<body>
+
+  <div class="container">
+  <!-- Left Panel: Uploads & Controls -->
+  <div class="left-panel" style="flex: 1 1 55%; min-width: 400px; padding-right: 20px; font-size: 1.50rem">
+    <div class="mode-switcher">
+      <span>Single Audio Check</span>
+      <label class="switch">
+        <input type="checkbox" id="modeToggle" />
+        <span class="slider"></span>
+      </label>
+      <span>Two Audio Comparison</span>
+    </div>
+
+    <!-- Single Audio Panel -->
+    <div id="singleAudioPanel">
+      <h2>Audio Authenticity Checker</h2>
+      <label for="modelSelect">Select Model</label>
+      <select id="modelSelect" required>
+        <option value="" disabled selected>Choose a model</option>
+        <option value="logisticregression">Logistic Regression</option>
+        <option value="mlp">MLP</option>
+        <option value="randomforest">Random Forest</option>
+        <option value="cnnt_transformer">CNN Transformer (all)</option>
+      </select>
+
+      <label for="audioUpload">Upload WAV Audio</label>
+      <input type="file" id="audioUpload" accept=".wav" required />
+      <button id="predictBtn" type="button" disabled>Check Authenticity</button>
+    </div>
+
+    <!-- Two Audio Panel -->
+    <div id="twoAudioPanel" style="display:none;">
+      <h2>Compare Two Audio</h2>
+      <label for="audioUpload1">Upload First WAV Audio</label>
+      <input type="file" id="audioUpload1" accept=".wav" required />
+      <label for="audioUpload2">Upload Second WAV Audio</label>
+      <input type="file" id="audioUpload2" accept=".wav" required />
+      <button id="compareBtn" type="button" disabled style="margin-top: 10px;">Compare Speakers</button>
+    </div>
+  </div>
+
+  <!-- Right Panel: Results -->
+  <div class="right-panel" style="flex: 1 1 45%; min-width: 320px; padding-left: 20px;">
+    <h3>Audio Output</h3>
+
+    <!-- For single audio -->
+    <audio id="audioPlayer" controls style="width: 100%; margin-bottom: 10px; display: none;"></audio>
+    <img id="spectrogram" style="width: 100%; border: 1px solid #ccc; border-radius: 8px; display: none;" />
+    <canvas id="spectrogramCanvas"
+      width="600"
+      height="300"
+      style="display: none; margin-top: 15px; width: 100%; border-radius: 8px; background: #f0f0f0;">
+    </canvas>
+    <div id="transcript" style="font-size: 0.95rem; color: #333; text-align: left; margin-top: 15px;"></div>
+
+    <!-- For comparison -->
+    <audio id="audioPlayer1" controls style="width: 100%; margin-bottom: 10px; display: none;"></audio>
+    <img id="spectrogram1" style="width: 70%; margin-bottom: 10px; display: none; height: 20%" />
+    <div id="transcript1" style="font-size: 0.9rem; color: #333; text-align: left; margin-bottom: 20px;"></div>
+
+    <audio id="audioPlayer2" controls style="width: 100%; margin-bottom: 10px; display: none;"></audio>
+    <img id="spectrogram2" style="width: 70%; margin-bottom: 10px; display: none; height:20%" />
+    <div id="transcript2" style="font-size: 0.9rem; color: #333; text-align: left;"></div>
+
+    <div id="result" class="result"></div>
+  </div>
+</div>
+
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const modeToggle = document.getElementById('modeToggle');
+    const singleAudioPanel = document.getElementById('singleAudioPanel');
+    const twoAudioPanel = document.getElementById('twoAudioPanel');
+    const resultDiv = document.getElementById('result');
+
+    // Single audio elements
+    const modelSelect = document.getElementById('modelSelect');
+    const audioUpload = document.getElementById('audioUpload');
+    const predictBtn = document.getElementById('predictBtn');
+
+    // Two audio elements
+    const audioUpload1 = document.getElementById('audioUpload1');
+    const audioUpload2 = document.getElementById('audioUpload2');
+    const compareBtn = document.getElementById('compareBtn');
+
+    let currentMode = modeToggle.checked;
+
+    function clearAllRightPanel() {
+      // --- Single audio ---
+      const audioPlayer = document.getElementById("audioPlayer");
+      const spectrogram = document.getElementById("spectrogram");
+      const transcript = document.getElementById("transcript");
+      const canvas = document.getElementById("spectrogramCanvas");
+      
+      audioPlayer.pause();
+      audioPlayer.currentTime = 0;
+      audioPlayer.src = '';
+      audioPlayer.style.display = 'none';
+      
+      spectrogram.src = '';
+      spectrogram.style.display = 'none';
+      
+      transcript.textContent = '';
+      
+      canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+
+      // --- Two audio comparison ---
+      ["audioPlayer1", "audioPlayer2"].forEach(id => {
+        const el = document.getElementById(id);
+        el.pause();
+        el.currentTime = 0;
+        el.src = '';
+        el.style.display = 'none';
+      });
+
+      ["spectrogram1", "spectrogram2"].forEach(id => {
+        const el = document.getElementById(id);
+        el.src = '';
+        el.style.display = 'none';
+      });
+
+      ["transcript1", "transcript2"].forEach(id => {
+        document.getElementById(id).textContent = '';
+      });
+
+      // Clear result
+      const resultDiv = document.getElementById("result");
+      resultDiv.textContent = '';
+      resultDiv.className = 'result';
+    }
+
+
+    modeToggle.addEventListener('change', (e) => {
+        if (e.target.checked === currentMode) return;
+        currentMode = e.target.checked;
+
+        if (modeToggle.checked) {
+          singleAudioPanel.style.display = 'none';
+          twoAudioPanel.style.display = 'block';
+        } else {
+          singleAudioPanel.style.display = 'block';
+          twoAudioPanel.style.display = 'none';
+        }
+
+        clearAllRightPanel()
+        clearSingleAudioInputs();
+        clearTwoAudioInputs();
+        resultDiv.textContent = '';
+        resultDiv.className = 'result';
+
+        // === Clear spectrogram image and canvas ===
+        const spectrogram = document.getElementById("spectrogram");
+        const spectrogramCanvas = document.getElementById("spectrogramCanvas");
+        const canvasCtx = spectrogramCanvas.getContext("2d");
+
+        spectrogram.src = '';
+        spectrogram.style.display = 'none';
+        canvasCtx.clearRect(0, 0, spectrogramCanvas.width, spectrogramCanvas.height);
+
+        // === Clear transcript ===
+        const transcriptDiv = document.getElementById("transcript");
+        transcriptDiv.textContent = '';
+
+        // === Hide all audio players ===
+        audioPlayer.style.display = 'none';
+        document.getElementById("audioPlayer1").style.display = "none";
+        document.getElementById("audioPlayer2").style.display = "none";
+
+        // Reset audio sources
+        audioPlayer.src = "";
+        document.getElementById("audioPlayer1").src = "";
+        document.getElementById("audioPlayer2").src = "";
+
+        // Stop any playing audio
+        document.querySelectorAll("audio").forEach(audio => {
+          audio.pause();
+          audio.currentTime = 0;
+        });
+
+      });
+
+
+    function clearSingleAudioInputs() {
+      modelSelect.value = '';
+      audioUpload.value = '';
+      predictBtn.disabled = true;
+    }
+
+    function clearTwoAudioInputs() {
+      audioUpload1.value = '';
+      audioUpload2.value = '';
+      compareBtn.disabled = true;
+    }
+
+    function togglePredictBtn() {
+      predictBtn.disabled = !(modelSelect.value && audioUpload.files.length);
+      resultDiv.textContent = '';
+      resultDiv.className = 'result';
+    }
+
+    function toggleCompareBtn() {
+      compareBtn.disabled = !(audioUpload1.files.length && audioUpload2.files.length);
+      resultDiv.textContent = '';
+      resultDiv.className = 'result';
+    }
+
+    modelSelect.addEventListener('change', togglePredictBtn);
+    audioUpload.addEventListener('change', togglePredictBtn);
+    audioUpload1.addEventListener('change', toggleCompareBtn);
+    audioUpload2.addEventListener('change', toggleCompareBtn);
+
+    // Handle single audio prediction
+    predictBtn.addEventListener('click', () => {
+      resultDiv.textContent = 'Analyzing...';
+      resultDiv.className = 'result';
+
+      const model = modelSelect.value;
+      const audioFile = audioUpload.files[0];
+      const formData = new FormData();
+      formData.append('file', audioFile);
+
+      fetch(`http://127.0.0.1:5000/predict?model=${model}`, {
+        method: 'POST',
+        body: formData
+      })
+        .then(response => response.json())
+        .then(data => {
+          resultDiv.className = 'result';
+          if (data.error) {
+            resultDiv.textContent = `Error: ${data.error}`;
+            resultDiv.classList.add('fake');
+          } else {
+            resultDiv.textContent = `Prediction: ${data.prediction} (Confidence: ${data.confidence.toFixed(2)})`;
+            resultDiv.classList.add(data.prediction.toLowerCase());
+          }
+        })
+        .catch(error => {
+          resultDiv.className = 'result';
+          resultDiv.textContent = `Error: ${error}`;
+          resultDiv.classList.add('fake');
+        });
+    });
+
+        const audioPlayer = document.getElementById('audioPlayer');
+        const canvas = document.getElementById('spectrogramCanvas');
+        const ctx = canvas.getContext('2d');
+
+        audioUpload.addEventListener('change', async () => {
+          const file = audioUpload.files[0];
+          if (!file) return;
+
+          // Show audio player
+          const audioURL = URL.createObjectURL(file);
+          audioPlayer.src = audioURL;
+          audioPlayer.style.display = 'block';
+
+          // Add this block:
+          let hasStartedVisualizer = false;
+          audioPlayer.addEventListener("play", () => {
+            if (!hasStartedVisualizer) {
+              visualizeAudioStream(audioPlayer, canvas);
+              hasStartedVisualizer = true;
+            }
+          });
+
+          // === Generate Real Spectrogram ===
+          const formData = new FormData();
+          formData.append("file", file);
+
+          try {
+            const spectroResponse = await fetch("http://127.0.0.1:5000/spectrogram", {
+              method: "POST",
+              body: formData
+            });
+
+            if (spectroResponse.ok) {
+              const blob = await spectroResponse.blob();
+              const spectrogram = document.getElementById("spectrogram");
+              spectrogram.src = URL.createObjectURL(blob);
+              spectrogram.style.display = 'block';
+            } else {
+              console.error("Spectrogram generation failed");
+            }
+
+            // === Transcribe Audio ===
+            const transcribeResponse = await fetch("http://127.0.0.1:5000/transcribe", {
+              method: "POST",
+              body: formData
+            });
+
+            const data = await transcribeResponse.json();
+            const transcriptDiv = document.getElementById("transcript");
+
+            if (data.transcript) {
+              transcriptDiv.textContent = `Transcript: ${data.transcript}`;
+            } else {
+              transcriptDiv.textContent = "No transcript available.";
+            }
+
+          } catch (err) {
+            console.error("Error handling audio upload:", err);
+          }
+        });
+
+
+        function visualizeAudioStream(audioElement, canvas) {
+            const ctx = canvas.getContext("2d");
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 2048;
+
+            const source = audioCtx.createMediaElementSource(audioElement);
+            source.connect(analyser);
+            analyser.connect(audioCtx.destination);
+
+            const bufferLength = analyser.fftSize;
+            const dataArray = new Uint8Array(bufferLength);
+
+            const width = canvas.width;
+            const height = canvas.height;
+
+            function draw() {
+              requestAnimationFrame(draw);
+
+              analyser.getByteTimeDomainData(dataArray);
+
+              ctx.fillStyle = "#f0f0f0";
+              ctx.fillRect(0, 0, width, height);
+
+              ctx.lineWidth = 2;
+              ctx.strokeStyle = "#3f51b5";
+
+              ctx.beginPath();
+
+              const sliceWidth = width / bufferLength;
+              let x = 0;
+
+              for (let i = 0; i < bufferLength; i++) {
+                const v = dataArray[i] / 128.0;
+                const y = (v * height) / 2;
+
+                if (i === 0) {
+                  ctx.moveTo(x, y);
+                } else {
+                  ctx.lineTo(x, y);
+                }
+
+                x += sliceWidth;
+              }
+
+              ctx.lineTo(width, height / 2);
+              ctx.stroke();
+            }
+
+            draw();
+          }
+
+
+
+
+    // Handle two audio comparison
+    compareBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      console.log('Compare button clicked');
+
+      resultDiv.textContent = 'Comparing...';
+      resultDiv.className = 'result';
+
+      const file1 = audioUpload1.files[0];
+      const file2 = audioUpload2.files[0];
+
+      if (!file1 || !file2) {
+        resultDiv.textContent = 'Please upload both files.';
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file1', file1);
+      formData.append('file2', file2);
+
+      console.log('Sending request...');
+
+      fetch('http://127.0.0.1:5000/compare', {
+        method: 'POST',
+        body: formData
+      })
+        .then(response => {
+          console.log('Response received');
+          return response.json();
+        })
+        .then(data => {
+          console.log('Parsed JSON:', data);
+          resultDiv.className = 'result';
+          if (data.error) {
+            resultDiv.textContent = `Error: ${data.error}`;
+            resultDiv.classList.add('fake');
+          } else {
+            resultDiv.textContent = `Result: ${data.result} (Similarity: ${data.similarity})`;
+            resultDiv.classList.add(data.result === "Same" ? 'real' : 'fake');
+          }
+        })
+        .catch(error => {
+          console.error('Request failed:', error);
+          resultDiv.className = 'result';
+          resultDiv.textContent = `Error: ${error}`;
+          resultDiv.classList.add('fake');
+        });
+    });
+
+        function handleAudioComparisonUpload(audioFile, audioPlayerEl, spectrogramEl, transcriptEl) {
+      const formData = new FormData();
+      formData.append("file", audioFile);
+
+      // Audio Player
+      const audioURL = URL.createObjectURL(audioFile);
+      audioPlayerEl.src = audioURL;
+      audioPlayerEl.style.display = 'block';
+
+      // Spectrogram
+      fetch("http://127.0.0.1:5000/spectrogram", {
+        method: "POST",
+        body: formData
+      })
+        .then(response => response.blob())
+        .then(blob => {
+          spectrogramEl.src = URL.createObjectURL(blob);
+          spectrogramEl.style.display = 'block';
+        })
+        .catch(err => {
+          console.error("Spectrogram error:", err);
+        });
+
+      // Transcript
+      fetch("http://127.0.0.1:5000/transcribe", {
+        method: "POST",
+        body: formData
+      })
+        .then(response => response.json())
+        .then(data => {
+          if (data.transcript) {
+            transcriptEl.textContent = `Transcript: ${data.transcript}`;
+          } else {
+            transcriptEl.textContent = "No transcript available.";
+          }
+        })
+        .catch(err => {
+          console.error("Transcript error:", err);
+        });
+    }
+
+    // Add change listeners for comparison uploads
+    audioUpload1.addEventListener("change", () => {
+      if (audioUpload1.files.length) {
+        handleAudioComparisonUpload(
+          audioUpload1.files[0],
+          document.getElementById("audioPlayer1"),
+          document.getElementById("spectrogram1"),
+          document.getElementById("transcript1")
+        );
+      }
+    });
+
+    audioUpload2.addEventListener("change", () => {
+      if (audioUpload2.files.length) {
+        handleAudioComparisonUpload(
+          audioUpload2.files[0],
+          document.getElementById("audioPlayer2"),
+          document.getElementById("spectrogram2"),
+          document.getElementById("transcript2")
+        );
+      }
+    });
+
+  });
+
+
+</script>
+
+
+</body>
+</html>
